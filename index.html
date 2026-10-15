@@ -1,11 +1,538 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Face Recognition &amp; Analytics</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+<style>
+  body {
+    background: linear-gradient(135deg, #fdf2f8 0%, #f5f3ff 40%, #ecfeff 75%, #fff7ed 100%);
+    background-attachment: fixed;
+  }
+  .mirror { transform: scaleX(-1); }
+  .spinner {
+    width: 56px; height: 56px; border-radius: 9999px;
+    border: 5px solid rgba(196,181,253,.35);
+    border-top-color: #f9a8d4;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar-fill { transition: width .15s linear; }
+  pre::-webkit-scrollbar { width: 8px; height: 8px; }
+  pre::-webkit-scrollbar-thumb { background: #ddd6fe; border-radius: 8px; }
+</style>
 </head>
-<body>
-  <h1>hello</h1>
+<body class="min-h-screen text-slate-700 antialiased">
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-slate-700">
+        Face Recognition <span class="text-pink-400">&amp; Analytics</span>
+      </h1>
+      <p class="text-slate-500 text-sm mt-1">Real-time landmarks, expressions and golden-ratio analysis. Everything runs locally in your browser.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="statusDot" class="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
+      <span id="statusText" class="text-sm text-slate-500">Loading models…</span>
+      <button id="toggleBtn" disabled
+        class="px-5 py-2.5 rounded-xl font-semibold text-pink-900 bg-pink-200 hover:bg-pink-300 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition">
+        Start Webcam
+      </button>
+    </div>
+  </header>
+
+  <main class="grid lg:grid-cols-3 gap-6">
+
+    <!-- Video column -->
+    <section class="lg:col-span-2 space-y-4">
+      <div id="videoWrap" class="relative w-full bg-violet-100 rounded-3xl overflow-hidden border-2 border-white shadow-lg shadow-violet-200/60" style="aspect-ratio: 4/3;">
+        <video id="video" class="absolute inset-0 w-full h-full mirror" autoplay muted playsinline></video>
+        <canvas id="overlay" class="absolute inset-0 w-full h-full mirror pointer-events-none"></canvas>
+
+        <!-- Idle placeholder -->
+        <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-violet-400 gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+          <p class="text-sm">Press <b class="text-pink-500">Start Webcam</b> to begin</p>
+        </div>
+
+        <!-- Loading spinner -->
+        <div id="loader" class="absolute inset-0 bg-white/90 flex flex-col items-center justify-center gap-4 z-20">
+          <div class="spinner"></div>
+          <p id="loaderText" class="text-slate-500 text-sm">Loading AI models from CDN…</p>
+        </div>
+
+        <!-- Live badges -->
+        <div id="liveBadges" class="absolute top-3 left-3 hidden gap-2 z-10">
+          <span class="px-2.5 py-1 rounded-lg bg-white/80 text-xs font-mono text-emerald-500 shadow-sm">Render <span id="fpsRender">0</span> FPS</span>
+          <span class="px-2.5 py-1 rounded-lg bg-white/80 text-xs font-mono text-sky-500 shadow-sm">AI <span id="fpsDetect">0</span> FPS</span>
+        </div>
+        <div id="noFace" class="absolute bottom-3 left-1/2 -translate-x-1/2 hidden px-3 py-1.5 rounded-lg bg-white/85 text-xs text-orange-400 shadow-sm z-10">
+          No face detected. Look at the camera.
+        </div>
+        <div id="funnyBanner" class="absolute top-3 left-1/2 -translate-x-1/2 hidden max-w-[90%] px-4 py-2 rounded-xl bg-white/85 text-sm md:text-base font-bold text-center shadow-sm z-10"></div>
+      </div>
+
+      <div id="errorBox" class="hidden rounded-xl border border-rose-200 bg-rose-50 text-rose-500 text-sm px-4 py-3"></div>
+
+      <!-- Quick stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="rounded-2xl bg-pink-50 border border-pink-100 p-4 shadow-sm">
+          <p class="text-xs text-pink-400">Faces</p>
+          <p id="statFaces" class="text-2xl font-bold mt-1 text-slate-700">0</p>
+        </div>
+        <div class="rounded-2xl bg-violet-50 border border-violet-100 p-4 shadow-sm">
+          <p class="text-xs text-violet-400">Dominant mood</p>
+          <p id="statMood" class="text-2xl font-bold mt-1 capitalize text-slate-700">–</p>
+        </div>
+        <div class="rounded-2xl bg-sky-50 border border-sky-100 p-4 shadow-sm">
+          <p class="text-xs text-sky-400">Confidence</p>
+          <p id="statConf" class="text-2xl font-bold mt-1 text-slate-700">–</p>
+        </div>
+        <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 shadow-sm">
+          <p class="text-xs text-emerald-400">Landmarks</p>
+          <p id="statLm" class="text-2xl font-bold mt-1 text-slate-700">0</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Analytics column -->
+    <aside class="space-y-6">
+
+      <!-- Golden ratio -->
+      <div class="rounded-3xl bg-white/80 border border-pink-100 p-5 shadow-md shadow-pink-100/60">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="font-semibold text-slate-700">Golden Ratio Analyzer</h2>
+          <span class="text-amber-400 font-serif text-lg">φ ≈ 1.618</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-4">Based on the 68 facial landmarks. Face straight toward the camera for best results.</p>
+
+        <div class="flex items-end justify-between">
+          <div>
+            <p class="text-xs text-slate-400">Face length ÷ width</p>
+            <p id="gaMain" class="text-4xl font-bold text-amber-400">–</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-slate-400">Match to φ</p>
+            <p id="gaScore" class="text-3xl font-bold text-slate-700">–</p>
+          </div>
+        </div>
+        <div class="h-2.5 rounded-full bg-violet-100 mt-3 overflow-hidden">
+          <div id="gaBar" class="bar-fill h-full bg-gradient-to-r from-pink-300 via-violet-300 to-sky-300" style="width:0%"></div>
+        </div>
+
+        <!-- Funny verdict -->
+        <div id="verdictCard" class="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 text-center transition">
+          <p id="verdictEmoji" class="text-3xl">🤖</p>
+          <p id="verdictText" class="text-sm font-semibold text-slate-500 mt-1">Start the webcam to get your verdict…</p>
+        </div>
+
+        <div class="mt-5 space-y-3 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Face length ÷ width</span>
+            <span><span id="gaR1" class="font-mono text-slate-700">–</span> <span id="gaD1" class="text-xs text-slate-400"></span></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Mouth width ÷ nose width</span>
+            <span><span id="gaR2" class="font-mono text-slate-700">–</span> <span id="gaD2" class="text-xs text-slate-400"></span></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Face width ÷ eye span</span>
+            <span><span id="gaR3" class="font-mono text-slate-700">–</span> <span id="gaD3" class="text-xs text-slate-400"></span></span>
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-4 leading-relaxed">
+          The 68-point model has no forehead points, so face length is estimated from chin to brows (×1.5). This is a fun demo, not a measure of beauty.
+        </p>
+      </div>
+
+      <!-- Expressions -->
+      <div class="rounded-3xl bg-white/80 border border-sky-100 p-5 shadow-md shadow-sky-100/60">
+        <h2 class="font-semibold mb-4 text-slate-700">Expression Analysis</h2>
+        <div id="exprList" class="space-y-2.5"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Prompt template -->
+  <section class="mt-8 rounded-3xl bg-white/80 border border-violet-100 p-5 shadow-md shadow-violet-100/60">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div>
+        <h2 class="font-semibold text-slate-700">Prompt Template to Share with Students</h2>
+        <p class="text-xs text-slate-400">System Prompt for Vibe Coding</p>
+      </div>
+      <button id="copyBtn" class="px-4 py-2 rounded-xl text-sm font-medium text-violet-700 bg-violet-100 hover:bg-violet-200 border border-violet-200 transition">
+        Copy prompt
+      </button>
+    </div>
+    <pre id="promptText" class="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 bg-pink-50/60 border border-pink-100 rounded-2xl p-4 max-h-96 overflow-auto"></pre>
+  </section>
+
+  <footer class="text-center text-xs text-slate-400 mt-8 pb-4">
+    No video leaves your device. All processing happens in the browser.
+  </footer>
+</div>
+
+<script>
+/* ---------- Config ---------- */
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+const PHI = 1.618;
+const EXPRESSIONS = ['neutral','happy','sad','angry','fearful','disgusted','surprised'];
+const EXPR_COLORS = {
+  neutral:'bg-slate-300', happy:'bg-emerald-300', sad:'bg-sky-300', angry:'bg-rose-300',
+  fearful:'bg-violet-300', disgusted:'bg-lime-300', surprised:'bg-amber-300'
+};
+
+const PROMPT_TEMPLATE = `Create a single-page HTML/JS web application for real-time Face Recognition & Analytics using the browser webcam.
+
+Requirements:
+
+Frontend UI: Dark-mode dashboard built with Tailwind CSS. Include a main video container with an overlapping HTML5 <canvas> layer for facial overlays.
+
+AI Vision Library: Load face-api.js via CDN. Load models for tinyFaceDetector, faceLandmark68Net, and faceExpressionNet.
+
+Functionality:
+
+- Add a Start/Stop Webcam button.
+- Track the user's face in real time and draw facial landmark lines over the video.
+- Display Golden Ratio Analyzer: Measures your facial proportions (e.g., face length vs. width) and compares them against the golden ratio (φ ≈ 1.618). Uses FaceLandmark68.
+
+UX Features: Show a loading spinner while AI models load from CDN. Ensure smooth 30+ FPS canvas rendering using requestAnimationFrame.`;
+
+/* ---------- Funny verdicts (based on face length ÷ width) ---------- */
+// Each range is: min <= ratio < max
+const VERDICTS = [
+  { min: 0,    max: 1.2,  emoji: '🌕', color: 'text-sky-500',     text: 'Whoa! Face tilted? Look straight at the camera, rocket head🚀🤣' },
+  { min: 1.2,  max: 1.3,  emoji: '🍎', color: 'text-lime-600',    text: 'Cute and round like an apple!  🥰' },
+  { min: 1.3,  max: 1.4,  emoji: '⚠️', color: 'text-orange-400',  text: 'WARNING!! Go wash your face 🧼💦' },
+  { min: 1.4,  max: 1.5,  emoji: '😩', color: 'text-rose-400',    text: 'Ahhhhh! You need to work more 🛠️💪' },
+  { min: 1.5,  max: 1.6,  emoji: '🔥', color: 'text-amber-500',   text: 'So close to golden! Just one more cup of chai ☕✨' },
+  { min: 1.6,  max: 1.64, emoji: '👑', color: 'text-yellow-500',  text: 'PERFECT GOLDEN RATIO!! Call the museum, they want you in a painting 🏆🎨' },
+  { min: 1.64, max: 1.75, emoji: '🧐', color: 'text-emerald-500', text: 'Slightly over golden. Smart-looking, scholar vibes 📚😎' },
+  { min: 1.75, max: 1.9,  emoji: '🦒', color: 'text-fuchsia-400', text: 'Long face alert! Are you a giraffe in disguise? 🦒😂' },
+  { min: 1.9,  max: 99,   emoji: '🚀', color: 'text-violet-400',  text: 'Full moon detected! Your face is wider than your WiFi range' },
+];
+function getVerdict(r) {
+  return VERDICTS.find(v => r >= v.min && r < v.max) || VERDICTS[VERDICTS.length - 1];
+}
+
+/* ---------- Elements ---------- */
+const $ = id => document.getElementById(id);
+const video = $('video'), canvas = $('overlay'), ctx = canvas.getContext('2d');
+const toggleBtn = $('toggleBtn'), loader = $('loader'), loaderText = $('loaderText');
+const statusDot = $('statusDot'), statusText = $('statusText');
+
+const BTN_START = 'px-5 py-2.5 rounded-xl font-semibold text-pink-900 bg-pink-200 hover:bg-pink-300 shadow-sm transition';
+const BTN_STOP  = 'px-5 py-2.5 rounded-xl font-semibold text-rose-900 bg-rose-300 hover:bg-rose-200 shadow-sm transition';
+
+/* ---------- State ---------- */
+let modelsLoaded = false, running = false, stream = null;
+let latest = [];                       // latest detection results
+let rafId = null;
+let renderFrames = 0, detectFrames = 0, lastFpsTime = performance.now();
+const smooth = { r1: null, r2: null, r3: null };
+
+/* ---------- UI helpers ---------- */
+function setStatus(text, color) {
+  statusText.textContent = text;
+  statusDot.className = 'h-2.5 w-2.5 rounded-full ' + color;
+}
+function showError(msg) {
+  const box = $('errorBox');
+  box.textContent = msg;
+  box.classList.toggle('hidden', !msg);
+}
+$('promptText').textContent = PROMPT_TEMPLATE;
+$('copyBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(PROMPT_TEMPLATE);
+    $('copyBtn').textContent = 'Copied ✓';
+  } catch {
+    const r = document.createRange(); r.selectNodeContents($('promptText'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $('copyBtn').textContent = 'Selected: press Ctrl+C';
+  }
+  setTimeout(() => $('copyBtn').textContent = 'Copy prompt', 2000);
+});
+
+// Build expression bars
+const exprList = $('exprList');
+EXPRESSIONS.forEach(name => {
+  const row = document.createElement('div');
+  row.innerHTML = `
+    <div class="flex justify-between text-xs mb-1">
+      <span class="capitalize text-slate-600">${name}</span>
+      <span id="ex-val-${name}" class="font-mono text-slate-400">0%</span>
+    </div>
+    <div class="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+      <div id="ex-bar-${name}" class="bar-fill h-full ${EXPR_COLORS[name]}" style="width:0%"></div>
+    </div>`;
+  exprList.appendChild(row);
+});
+
+/* ---------- Model loading ---------- */
+async function loadModels() {
+  try {
+    if (typeof faceapi === 'undefined') {
+      await new Promise((res, rej) => {
+        window.addEventListener('load', () => typeof faceapi !== 'undefined' ? res() : rej(new Error('face-api.js failed to load')));
+        if (document.readyState === 'complete') typeof faceapi !== 'undefined' ? res() : rej(new Error('face-api.js failed to load'));
+      });
+    }
+    loaderText.textContent = 'Loading tinyFaceDetector…';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    loaderText.textContent = 'Loading faceLandmark68Net…';
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    loaderText.textContent = 'Loading faceExpressionNet…';
+    await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+    modelsLoaded = true;
+    loader.classList.add('hidden');
+    toggleBtn.disabled = false;
+    setStatus('Models ready', 'bg-emerald-400');
+  } catch (e) {
+    console.error(e);
+    loaderText.textContent = 'Could not load AI models. Check your internet connection and reload.';
+    $('loader').querySelector('.spinner').style.display = 'none';
+    setStatus('Model load failed', 'bg-rose-400');
+  }
+}
+
+/* ---------- Webcam ---------- */
+async function startWebcam() {
+  showError('');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false
+    });
+  } catch (e) {
+    const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+    showError(denied
+      ? 'Camera access was blocked. Allow the camera in your browser settings (the page must be served over https or localhost).'
+      : 'Could not start the camera: ' + (e.message || e.name));
+    return;
+  }
+  video.srcObject = stream;
+  await new Promise(res => video.onloadedmetadata = res);
+  await video.play();
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  $('videoWrap').style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+
+  running = true;
+  $('placeholder').classList.add('hidden');
+  $('liveBadges').classList.remove('hidden'); $('liveBadges').classList.add('flex');
+  toggleBtn.textContent = 'Stop Webcam';
+  toggleBtn.className = BTN_STOP;
+  setStatus('Tracking live', 'bg-emerald-400 animate-pulse');
+
+  lastFpsTime = performance.now(); renderFrames = 0; detectFrames = 0;
+  rafId = requestAnimationFrame(renderLoop);
+  detectLoop();
+}
+
+function stopWebcam() {
+  running = false;
+  cancelAnimationFrame(rafId);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; video.srcObject = null; latest = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  $('placeholder').classList.remove('hidden');
+  $('liveBadges').classList.add('hidden'); $('liveBadges').classList.remove('flex');
+  $('noFace').classList.add('hidden');
+  toggleBtn.textContent = 'Start Webcam';
+  toggleBtn.className = BTN_START;
+  setStatus('Webcam stopped', 'bg-slate-300');
+  resetPanels();
+}
+
+toggleBtn.addEventListener('click', () => {
+  if (!modelsLoaded) return;
+  running ? stopWebcam() : startWebcam();
+});
+
+/* ---------- Detection loop (async, runs independently of rendering) ---------- */
+async function detectLoop() {
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+  while (running) {
+    try {
+      latest = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceExpressions();
+      detectFrames++;
+      updateAnalytics(latest);
+    } catch (e) {
+      console.error(e);
+      await new Promise(r => setTimeout(r, 200));
+    }
+    // yield so rendering stays smooth
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+
+/* ---------- Render loop (requestAnimationFrame) ---------- */
+const GROUPS = [
+  { pts: range(0, 16),  closed: false, color: '#93c5fd' },  // jaw (pastel blue)
+  { pts: range(17, 21), closed: false, color: '#c4b5fd' },  // right brow (pastel lavender)
+  { pts: range(22, 26), closed: false, color: '#c4b5fd' },  // left brow
+  { pts: range(27, 30), closed: false, color: '#86efac' },  // nose bridge (pastel mint)
+  { pts: range(30, 35), closed: false, color: '#86efac' },  // nose base
+  { pts: range(36, 41), closed: true,  color: '#fde68a' },  // right eye (pastel butter)
+  { pts: range(42, 47), closed: true,  color: '#fde68a' },  // left eye
+  { pts: range(48, 59), closed: true,  color: '#f9a8d4' },  // outer lips (pastel pink)
+  { pts: range(60, 67), closed: true,  color: '#f9a8d4' },  // inner lips
+];
+function range(a, b) { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; }
+
+function renderLoop() {
+  if (!running) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const det of latest) {
+    drawBox(det.detection.box);
+    const p = det.landmarks.positions;
+
+    ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (const g of GROUPS) {
+      ctx.strokeStyle = g.color;
+      ctx.beginPath();
+      g.pts.forEach((idx, i) => i ? ctx.lineTo(p[idx].x, p[idx].y) : ctx.moveTo(p[idx].x, p[idx].y));
+      if (g.closed) ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#fdf4ff';
+    for (const pt of p) { ctx.beginPath(); ctx.arc(pt.x, pt.y, 1.8, 0, Math.PI * 2); ctx.fill(); }
+
+    drawGoldenGuides(p);
+  }
+
+  renderFrames++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 500) {
+    const dt = (now - lastFpsTime) / 1000;
+    $('fpsRender').textContent = Math.round(renderFrames / dt);
+    $('fpsDetect').textContent = Math.round(detectFrames / dt);
+    renderFrames = 0; detectFrames = 0; lastFpsTime = now;
+  }
+  rafId = requestAnimationFrame(renderLoop);
+}
+
+function drawBox(b) {
+  const len = Math.min(b.width, b.height) * 0.2;
+  ctx.strokeStyle = '#fbcfe8'; ctx.lineWidth = 3;
+  const { x, y, width: w, height: h } = b;
+  ctx.beginPath();
+  [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([cx, cy, dx, dy]) => {
+    ctx.moveTo(cx + dx * len, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + dy * len);
+  });
+  ctx.stroke();
+}
+
+/* ---------- Golden ratio geometry ---------- */
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+function faceGeometry(p) {
+  const chin = p[8];
+  const browMid = mid(p[19], p[24]);
+  const width = dist(p[0], p[16]);
+  // Estimate hairline: brow-to-chin is roughly 2/3 of full face length
+  const dx = browMid.x - chin.x, dy = browMid.y - chin.y;
+  const top = { x: chin.x + dx * 1.5, y: chin.y + dy * 1.5 };
+  const length = dist(chin, top);
+  return {
+    top, chin, width, length,
+    r1: length / width,
+    r2: dist(p[48], p[54]) / dist(p[31], p[35]),
+    r3: width / dist(p[36], p[45]),
+  };
+}
+
+function drawGoldenGuides(p) {
+  const g = faceGeometry(p);
+  ctx.save();
+  ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y); ctx.lineTo(p[16].x, p[16].y);   // width
+  ctx.moveTo(g.top.x, g.top.y); ctx.lineTo(g.chin.x, g.chin.y); // length
+  ctx.stroke();
+  ctx.restore();
+}
+
+const matchPct = r => Math.round(100 * (1 - Math.min(1, Math.abs(r - PHI) / (PHI * 0.5))));
+const ema = (prev, v, a = 0.15) => prev == null ? v : prev + a * (v - prev);
+
+/* ---------- Analytics panels ---------- */
+function updateAnalytics(results) {
+  $('statFaces').textContent = results.length;
+  $('noFace').classList.toggle('hidden', results.length > 0 || !running);
+
+  if (!results.length) {
+    $('statMood').textContent = '–'; $('statConf').textContent = '–'; $('statLm').textContent = '0';
+    $('funnyBanner').classList.add('hidden');
+    return;
+  }
+  // main subject = largest face
+  const main = results.reduce((a, b) => a.detection.box.area > b.detection.box.area ? a : b);
+  $('statConf').textContent = Math.round(main.detection.score * 100) + '%';
+  $('statLm').textContent = main.landmarks.positions.length;
+
+  // Expressions
+  const ex = main.expressions;
+  let top = 'neutral', topV = 0;
+  EXPRESSIONS.forEach(n => {
+    const v = ex[n] || 0;
+    if (v > topV) { topV = v; top = n; }
+    $('ex-bar-' + n).style.width = (v * 100).toFixed(0) + '%';
+    $('ex-val-' + n).textContent = (v * 100).toFixed(0) + '%';
+  });
+  $('statMood').textContent = top;
+
+  // Golden ratio
+  const g = faceGeometry(main.landmarks.positions);
+  smooth.r1 = ema(smooth.r1, g.r1);
+  smooth.r2 = ema(smooth.r2, g.r2);
+  smooth.r3 = ema(smooth.r3, g.r3);
+
+  const score = matchPct(smooth.r1);
+  $('gaMain').textContent = smooth.r1.toFixed(3);
+  $('gaScore').textContent = score + '%';
+  $('gaBar').style.width = score + '%';
+
+  // Funny verdict card + banner on the video
+  const v = getVerdict(smooth.r1);
+  $('verdictEmoji').textContent = v.emoji;
+  $('verdictText').textContent = v.text;
+  $('verdictText').className = 'text-sm font-semibold mt-1 ' + v.color;
+  const banner = $('funnyBanner');
+  banner.textContent = v.emoji + ' ' + v.text;
+  banner.className = 'absolute top-3 left-1/2 -translate-x-1/2 max-w-[90%] px-4 py-2 rounded-xl bg-white/85 shadow-sm text-sm md:text-base font-bold text-center z-10 ' + v.color;
+  [['1', smooth.r1], ['2', smooth.r2], ['3', smooth.r3]].forEach(([k, r]) => {
+    $('gaR' + k).textContent = r.toFixed(2);
+    const d = r - PHI;
+    $('gaD' + k).textContent = (d >= 0 ? '+' : '') + d.toFixed(2) + ' vs φ';
+  });
+}
+
+function resetPanels() {
+  $('statFaces').textContent = '0'; $('statMood').textContent = '–';
+  $('statConf').textContent = '–'; $('statLm').textContent = '0';
+  EXPRESSIONS.forEach(n => { $('ex-bar-' + n).style.width = '0%'; $('ex-val-' + n).textContent = '0%'; });
+  ['gaMain', 'gaScore', 'gaR1', 'gaR2', 'gaR3'].forEach(id => $(id).textContent = '–');
+  ['gaD1', 'gaD2', 'gaD3'].forEach(id => $(id).textContent = '');
+  $('gaBar').style.width = '0%';
+  $('funnyBanner').classList.add('hidden');
+  $('verdictEmoji').textContent = '🤖';
+  $('verdictText').textContent = 'Start the webcam to get your verdict…';
+  $('verdictText').className = 'text-sm font-semibold text-slate-500 mt-1';
+  smooth.r1 = smooth.r2 = smooth.r3 = null;
+}
+
+window.addEventListener('load', loadModels);
+</script>
 </body>
 </html>
