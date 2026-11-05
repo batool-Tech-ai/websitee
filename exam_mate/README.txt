@@ -1,16 +1,20 @@
-Batool's ExamMate — HTML / CSS / JavaScript / PHP package
+Batool's ExamMate — Fully Offline HTML / CSS / JavaScript / PHP package
 
-Contents
-- index.html: compiled website entry page
-- index.php: PHP-compatible entry point that serves index.html
-- assets/style.css: compiled stylesheet
-- assets/app.js: compiled JavaScript application
-- assets/pdf.worker.mjs: PDF worker used by the material reader
+This package is self-contained and does not require internet access, Google Fonts, a CDN, Manus storage, or external runtime files.
 
-How to upload
-1. Extract the ZIP on your computer.
-2. Upload index.php, index.html, and the complete assets folder to your hosting public_html folder.
-3. Open your domain. PHP hosting will load index.php; static hosting can load index.html.
+Files
+- index.html: static website entry point
+- index.php: PHP-compatible entry point
+- assets/style.css: local compiled stylesheet using system fonts
+- assets/app.js: local compiled JavaScript application
+- assets/pdf.worker.mjs: local PDF worker
+- assets/batools-exammate-logo.png: local logo image
 
-Important note
-This is a compiled production export of the React application. The browser-based local/demo features are included. The original editable React/TypeScript source and server-side AI project are in the separate source ZIP. If you want AI material analysis to work on ordinary PHP hosting, the server endpoint must be separately configured for your hosting provider.
+Deployment
+1. Extract this folder.
+2. Upload index.php, index.html, and the complete assets folder to public_html.
+3. Open your domain. PHP hosting uses index.php; static hosting uses index.html.
+4. The browser-based demo, local material reading, paper generation, practice, scoring, and local result history work without an internet connection.
+
+Note
+The fully offline export uses the browser/local fallback generation path. The original editable source ZIP contains the optional server-side AI integration, which requires a server and model/API configuration and is not part of this offline-only package.
